@@ -10,7 +10,7 @@ public class ItemFeed {
     private final String pubDate;
     private final String description;
     private final String downloadLink;
-    public String episode_uri;
+    private final String episode_uri;
 
 
     public ItemFeed(String title, String link, String pubDate, String description, String downloadLink, String episode_uri) {
@@ -47,6 +47,8 @@ public class ItemFeed {
     public String getLink() {
         return link;
     }
+
+    public String getEpisode_uri() {return  episode_uri;}
 
     public String getPubDate() {
         return pubDate;

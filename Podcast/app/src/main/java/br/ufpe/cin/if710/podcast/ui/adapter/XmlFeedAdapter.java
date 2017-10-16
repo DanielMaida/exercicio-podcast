@@ -3,6 +3,9 @@ package br.ufpe.cin.if710.podcast.ui.adapter;
 import java.util.List;
 import android.content.Context;
 import android.content.Intent;
+import android.database.Cursor;
+import android.media.MediaPlayer;
+import android.net.Uri;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
@@ -10,12 +13,15 @@ import android.widget.Button;
 import android.widget.TextView;
 
 import br.ufpe.cin.if710.podcast.R;
+import br.ufpe.cin.if710.podcast.db.PodcastProviderContract;
 import br.ufpe.cin.if710.podcast.domain.ItemFeed;
+import br.ufpe.cin.if710.podcast.services.DownloadService;
 import br.ufpe.cin.if710.podcast.ui.EpisodeDetailActivity;
 
 public class XmlFeedAdapter extends ArrayAdapter<ItemFeed> {
 
     int linkResource;
+    private static MediaPlayer mPlayer;
 
     public XmlFeedAdapter(Context context, int resource, List<ItemFeed> objects) {
         super(context, resource, objects);
@@ -57,7 +63,7 @@ public class XmlFeedAdapter extends ArrayAdapter<ItemFeed> {
 
     @Override
     public View getView(final int position, View convertView, ViewGroup parent) {
-        ViewHolder holder;
+        final ViewHolder holder;
         if (convertView == null) {
             convertView = View.inflate(getContext(), linkResource, null);
             holder = new ViewHolder();
@@ -80,8 +86,42 @@ public class XmlFeedAdapter extends ArrayAdapter<ItemFeed> {
                 getContext().startActivity(intent);
             }
         });
+        holder.item_download.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if(holder.item_download.getText().equals("baixar")) {
+                    holder.item_download.setEnabled(false);
+                    Intent downloadIntent = new Intent(getContext(), DownloadService.class);
+                    downloadIntent.setData(Uri.parse(getItem(position).getDownloadLink()));
+                    downloadIntent.putExtra("position", position);
+                    downloadIntent.putExtra("download_link", getItem(position).getDownloadLink());
+                    getContext().startService(downloadIntent);
+                }else if(holder.item_download.getText().equals("TOCAR")){
+                    ItemFeed item = getItem(position);
 
-        
+                    Cursor cursor = getContext().getContentResolver().query(PodcastProviderContract.EPISODE_LIST_URI,
+                            PodcastProviderContract.ALL_COLUMNS,
+                            PodcastProviderContract.EPISODE_TITLE + "=?",
+                            new String[]{item.getTitle()},
+                            null,
+                            null
+                    );
+                    cursor.moveToFirst();
+                    if (!cursor.isAfterLast()) {
+                        item = new ItemFeed(cursor);
+                    }
+
+                    if (mPlayer != null && mPlayer.isPlaying()) {
+                        mPlayer.stop();
+                    }else {
+                        Uri media_uri = Uri.parse(item.getEpisode_uri());
+                        mPlayer = MediaPlayer.create(getContext(), media_uri);
+                        mPlayer.start();
+                    }
+                }
+            }
+        });
+
         holder.item_date.setText(getItem(position).getPubDate());
         return convertView;
     }

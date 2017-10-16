@@ -1,13 +1,22 @@
 package br.ufpe.cin.if710.podcast.ui;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.ContentValues;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
+import android.support.v4.content.LocalBroadcastManager;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.widget.Button;
 import android.widget.ListView;
 import android.widget.Toast;
 
@@ -29,6 +38,7 @@ import br.ufpe.cin.if710.podcast.db.PodcastDBHelper;
 import br.ufpe.cin.if710.podcast.db.PodcastProviderContract;
 import br.ufpe.cin.if710.podcast.domain.ItemFeed;
 import br.ufpe.cin.if710.podcast.domain.XmlFeedParser;
+import br.ufpe.cin.if710.podcast.services.DownloadService;
 import br.ufpe.cin.if710.podcast.ui.adapter.XmlFeedAdapter;
 
 public class MainActivity extends Activity {
@@ -43,7 +53,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
+        writePermission();
         items = (ListView) findViewById(R.id.items);
     }
 
@@ -71,18 +81,60 @@ public class MainActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
-        //if(isOnline()) {
-            new DownloadXmlTask().execute(RSS_FEED);
-            Toast.makeText(getApplicationContext(), "Procurando por episódios novos...", Toast.LENGTH_SHORT).show();
-        //}
-        //else {
-        //    Toast.makeText(getApplicationContext(), "Sem conexão com a internet disponível", Toast.LENGTH_SHORT).show();
-        //}
+        IntentFilter f=new IntentFilter(DownloadService.DOWNLOAD_COMPLETE);
+        LocalBroadcastManager.getInstance(getApplicationContext()).registerReceiver(onDownload, f);
+        new DownloadXmlTask().execute(RSS_FEED);
+        Toast.makeText(getApplicationContext(), "Procurando por episódios novos...", Toast.LENGTH_SHORT).show();
+
     }
 
     @Override
     protected void onStop() {
         super.onStop();
+        LocalBroadcastManager.getInstance(getApplicationContext()).unregisterReceiver(onDownload);
+        XmlFeedAdapter adapter = (XmlFeedAdapter) items.getAdapter();
+        adapter.clear();
+    }
+
+    BroadcastReceiver onDownload = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            int position = intent.getIntExtra("position",-1);
+            if(position == -1){
+                Log.d("broad","erro no broadcast, posição -1"); //essa posicao eh necessaria pra achar o item que foi baixado
+            }else{
+                Button actionBtn = items.getChildAt(position).findViewById(R.id.item_action);
+                actionBtn.setText("TOCAR");
+                actionBtn.setEnabled(true);
+            }
+        }
+    };
+
+    private void writePermission(){
+        if(ContextCompat.checkSelfPermission(this,android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED){
+
+            ActivityCompat.requestPermissions(this,
+                    new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    1337);
+        }
+
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           String permissions[], int[] grantResults) {
+        switch (requestCode) {
+            case 1337: {
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) { //ai aqui permitiu
+
+                } else {
+                    writePermission();
+                }
+                return;
+            }
+        }
     }
 
     private class DownloadXmlTask extends AsyncTask<String, Void, List<ItemFeed>> {
@@ -188,7 +240,7 @@ public class MainActivity extends Activity {
     }
 
     private boolean isOnline() { //aqui eu faço um teste via ping pra ver se está conectado E com acesso a internet
-       try {
+        try {
             int timeoutMs = 1500;
             Socket sock = new Socket();
             SocketAddress sockaddr = new InetSocketAddress("8.8.8.8", 53);
@@ -197,6 +249,6 @@ public class MainActivity extends Activity {
             sock.close();
 
             return true;
-       } catch (IOException e) { return false; }
+        } catch (IOException e) { return false; }
     }
 }

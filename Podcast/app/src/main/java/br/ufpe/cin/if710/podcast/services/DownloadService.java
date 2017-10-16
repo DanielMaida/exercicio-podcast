@@ -4,7 +4,10 @@ import android.app.IntentService;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.database.Cursor;
 import android.os.Environment;
+import android.support.v4.content.LocalBroadcastManager;
+import android.util.Log;
 
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -18,6 +21,7 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 
+import br.ufpe.cin.if710.podcast.db.PodcastProvider;
 import br.ufpe.cin.if710.podcast.db.PodcastProviderContract;
 
 /**
@@ -25,6 +29,8 @@ import br.ufpe.cin.if710.podcast.db.PodcastProviderContract;
  */
 
 public class DownloadService extends IntentService{
+
+    public static final String DOWNLOAD_COMPLETE = "br.ufpe.cin.if710.services.action.DOWNLOAD_COMPLETE";
 
     public DownloadService(){
         super("DownloadService");
@@ -34,6 +40,7 @@ public class DownloadService extends IntentService{
     protected void onHandleIntent(Intent intent) {
         try {
             //checar se tem permissao... Android 6.0+
+            Log.d("baixando","iniciou o service");
             File root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
             root.mkdirs();
             File output = new File(root, intent.getData().getLastPathSegment());
@@ -59,17 +66,23 @@ public class DownloadService extends IntentService{
                 c.disconnect();
             }
             String downloadLink = intent.getStringExtra("download_link");
-            URI fileUri = output.toURI();
+            URI uri = output.toURI();
             ContentResolver contentResolver = getContentResolver();
 
             ContentValues values = new ContentValues();
-            values.put(PodcastProviderContract.EPISODE_FILE_URI,fileUri.toString());
+            values.put(PodcastProviderContract.EPISODE_FILE_URI,uri.toString());
             int result = contentResolver.update(
                     PodcastProviderContract.EPISODE_LIST_URI,
                     values,
                     PodcastProviderContract.EPISODE_DOWNLOAD_LINK + " =?",
                     new String[]{downloadLink}
             );
+
+            Intent broadcastInfo = new Intent(DOWNLOAD_COMPLETE);
+            broadcastInfo.putExtra("position", intent.getIntExtra("position",-1));
+
+            LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastInfo);
+
         } catch (IOException e) {
             e.printStackTrace();
         }
