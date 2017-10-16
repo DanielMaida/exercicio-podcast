@@ -1,13 +1,13 @@
 package br.ufpe.cin.if710.podcast.ui;
 
 import android.app.Activity;
+import android.content.ContentValues;
 import android.content.Intent;
+import android.database.Cursor;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.View;
-import android.widget.AdapterView;
 import android.widget.ListView;
 import android.widget.Toast;
 
@@ -17,11 +17,16 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.SocketAddress;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
 import br.ufpe.cin.if710.podcast.R;
+import br.ufpe.cin.if710.podcast.db.PodcastDBHelper;
+import br.ufpe.cin.if710.podcast.db.PodcastProviderContract;
 import br.ufpe.cin.if710.podcast.domain.ItemFeed;
 import br.ufpe.cin.if710.podcast.domain.XmlFeedParser;
 import br.ufpe.cin.if710.podcast.ui.adapter.XmlFeedAdapter;
@@ -66,14 +71,18 @@ public class MainActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
-        new DownloadXmlTask().execute(RSS_FEED);
+        //if(isOnline()) {
+            new DownloadXmlTask().execute(RSS_FEED);
+            Toast.makeText(getApplicationContext(), "Procurando por episódios novos...", Toast.LENGTH_SHORT).show();
+        //}
+        //else {
+        //    Toast.makeText(getApplicationContext(), "Sem conexão com a internet disponível", Toast.LENGTH_SHORT).show();
+        //}
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        XmlFeedAdapter adapter = (XmlFeedAdapter) items.getAdapter();
-        adapter.clear();
     }
 
     private class DownloadXmlTask extends AsyncTask<String, Void, List<ItemFeed>> {
@@ -83,21 +92,43 @@ public class MainActivity extends Activity {
         }
 
         @Override
-        protected List<ItemFeed> doInBackground(String... params) {
+        protected  List<ItemFeed> doInBackground(String... params) {
             List<ItemFeed> itemList = new ArrayList<>();
             try {
                 itemList = XmlFeedParser.parse(getRssFeed(params[0]));
+                for(ItemFeed item: itemList){
+                    if(!existsInDatabase(item.getTitle())){
+                        ContentValues cv = new ContentValues();
+                        cv.put(PodcastDBHelper.EPISODE_TITLE, item.getTitle());
+                        cv.put(PodcastDBHelper.EPISODE_LINK, item.getLink());
+                        cv.put(PodcastDBHelper.EPISODE_DATE, item.getPubDate());
+                        cv.put(PodcastDBHelper.EPISODE_DOWNLOAD_LINK, item.getDownloadLink());
+                        cv.put(PodcastDBHelper.EPISODE_DESC, item.getDescription());
+                        cv.put(PodcastDBHelper.EPISODE_FILE_URI, "");
+                        getContentResolver().insert(PodcastProviderContract.EPISODE_LIST_URI, cv);
+                    }
+                }
             } catch (IOException e) {
                 e.printStackTrace();
             } catch (XmlPullParserException e) {
                 e.printStackTrace();
             }
+            Cursor cursor = getContentResolver().query(PodcastProviderContract.EPISODE_LIST_URI,null,null,null,null,null);
+            try {
+                while (cursor.moveToNext()) {
+                    itemList.add(new ItemFeed(cursor));
+                }
+            } finally {
+                cursor.close();
+            }
             return itemList;
         }
 
         @Override
-        protected void onPostExecute(List<ItemFeed> feed) {
+        protected void onPostExecute( List<ItemFeed> feed) {
             Toast.makeText(getApplicationContext(), "terminando...", Toast.LENGTH_SHORT).show();
+
+
 
             //Adapter Personalizado
             XmlFeedAdapter adapter = new XmlFeedAdapter(getApplicationContext(), R.layout.itemlista, feed);
@@ -116,6 +147,20 @@ public class MainActivity extends Activity {
                 }
             });
             /**/
+        }
+
+        protected boolean existsInDatabase(String name){
+            String selection = PodcastProviderContract.EPISODE_TITLE + "=?";
+            String [] whereArgs = {name};
+            Cursor cursor = getContentResolver().query(PodcastProviderContract.EPISODE_LIST_URI, null,
+                    selection, whereArgs,null);
+            if (cursor.getCount() <= 0){
+                cursor.close();
+                return  false;
+            }
+            cursor.close();
+            return true;
+
         }
     }
 
@@ -140,5 +185,18 @@ public class MainActivity extends Activity {
             }
         }
         return rssFeed;
+    }
+
+    private boolean isOnline() { //aqui eu faço um teste via ping pra ver se está conectado E com acesso a internet
+       try {
+            int timeoutMs = 1500;
+            Socket sock = new Socket();
+            SocketAddress sockaddr = new InetSocketAddress("8.8.8.8", 53);
+
+            sock.connect(sockaddr, timeoutMs);
+            sock.close();
+
+            return true;
+       } catch (IOException e) { return false; }
     }
 }
